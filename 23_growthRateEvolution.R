@@ -6,6 +6,7 @@ rm(list=ls())
   library(tidyverse)
   library(MuMIn)
   library(nlme)
+  library(car)
 }
 
 #3) Set working directory and load in data
@@ -13,7 +14,7 @@ rm(list=ls())
   #setwd("F:/Documenten/PhD/08_Big_Experiment_1")
   setwd("/media/felix/DataDrive2/Documenten/PhD/08_Gene_Swamping/")
   load("2_data/6_EvolvedStrainsPosteriors/SummarisedPosteriorsEvolved.RData")
-  load("2_data/5_EvolvedStrains/1_RawDensityData-Evolvedlines.RData.RData")
+  load("2_data/5_EvolvedStrains/1_RawDensityData-Evolvedlines.RData")
   load("2_data/6_EvolvedStrainsPosteriors/SummarisedPosteriorsAncestorRedoneAll.RData")
 }
 sumdata <- sumoutputall
@@ -26,9 +27,9 @@ sumdata <- sumoutputall
   plotdata$K.mean <- ifelse(is.na(plotdata$logK.mean), NA, exp(plotdata$logK.mean))
   plotdata$alpha.mean <- ifelse(is.na(plotdata$logalpha.mean), NA, exp(plotdata$logalpha.mean))
   plotdata$d.mean <- ifelse(is.na(plotdata$logd.mean), NA, exp(plotdata$logd.mean))
-  plotdata$Sex <- factor(ifelse(plotdata$Sex=="y", "Sex (Sex)", "No sex (Asex)"), levels = c("No sex (Asex)", "Sex (Sex)"))
-  plotdata$Gradient <- factor(ifelse(plotdata$Gradient=="y", "Gradient (Grad)", "No gradient (Const)"), levels = c("No gradient (Const)", "Gradient (Grad)"))
-  plotdata$Gene.Flow <- factor(ifelse(plotdata$Gene.Flow=="y", "Gene flow (GF)", "No gene flow (NoGF)"), levels = c("No gene flow (NoGF)", "Gene flow (GF)"))
+  plotdata$Sex <- factor(ifelse(plotdata$Sex=="y", "Sexual", "Asexual"), levels = c("Asexual", "Sexual"))
+  plotdata$Gradient <- factor(ifelse(plotdata$Gradient=="y", "Gradient", "Uniform"), levels = c("Uniform", "Gradient"))
+  plotdata$Gene.Flow <- factor(ifelse(plotdata$Gene.Flow=="y", "Present", "Absent"), levels = c("Absent", "Present"))
   
   sumdata$testpH <- paste(sumdata$pH, "j")
 }
@@ -37,7 +38,7 @@ sumdata <- sumoutputall
 {
   
   #Filter for evolution data and pH 4 or 6.5
-  dd.evo <- filter(plotdata, strain=="mix") %>% filter(testpH %in% c(4, 6.5)) %>% filter((testpH==4 & Gradient == "Gradient (Grad)") | (testpH!=4 & Gradient != "Gradient (Grad)"))
+  dd.evo <- filter(plotdata, strain=="mix") %>% filter(testpH %in% c(4, 6.5)) %>% filter((testpH==4 & Gradient == "Gradient") | (testpH!=4 & Gradient != "Gradient"))
   sumdata.evo <- filter(sumdata, strain=="mix") %>% filter(pH %in% c(4, 6.5))
 }
 
@@ -49,6 +50,7 @@ sumdata <- sumoutputall
   best.model <- lm(data = dd.evo, logr0.mean ~ Sex + Gene.Flow + Gradient + Sex*Gene.Flow, na.action = "na.fail")
   anova(best.model)
   summary(best.model)
+  Anova(best.model, contrasts=list(topic=contr.sum, sys=contr.sum), type=3)
 }
 
 #7) Make model predictions and plot evolution model without ancestor
@@ -66,11 +68,12 @@ sumdata <- sumoutputall
     geom_boxplot(inherit.aes = F, data = prd.data, mapping = aes(fill = NA, middle = meanr0, ymax = meanr0, ymin = meanr0, upper = meanr0, lower = meanr0, x = Sex), stat = "identity", alpha = 0.3) + 
     ylab(expression("Intrinsic rate of increase, r"[0]*" (1/h) ")) + xlab("Reproductive strategy") + 
     theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                            axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
+                            axis.title=element_text(size=16), strip.text = element_text(size=16), axis.title.x = element_blank(),
+                            axis.text.x=element_text(size=16, color = "black"), legend.position="none")+
     theme(strip.background =element_rect(fill="grey"))+
     theme(strip.text = element_text(colour = 'black')) +
-    scale_color_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproductive strategy", labels=c("No sex (Asex)", "Sex (Sex)")) +
-    scale_fill_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproductive strategy", labels=c("No sex (Asex)", "Sex (Sex)"))
+    scale_color_manual(values=c("#8c510a", "#01665e"), breaks=c("Asexual", "Sexual"), name="Reproduction", labels=c("Asexual", "Sexual")) +
+    scale_fill_manual(values=c("#8c510a", "#01665e"), breaks=c("Asexual", "Sexual"), name="Reproduction", labels=c("Asexual", "Sexual"))
   ggsave(filename = "4_results/Figures/03_growthRateEvolution_rawdata", device = "png", width = 8.5, height = 5.88, dpi = 300)
 }
 
@@ -97,6 +100,7 @@ sumdata <- sumoutputall
   best.model4 <- lm(data = dd.evo, logratio ~ Sex + Gene.Flow + Gradient + Sex*Gene.Flow + Gradient*Sex, na.action = "na.fail")
   anova(best.model2)
   summary(best.model2)
+  Anova(best.model2, contrasts=list(topic=contr.sum, sys=contr.sum), type=3)
   
   
 }
@@ -109,18 +113,33 @@ sumdata <- sumoutputall
   prd.data2$meanr0 <-predictions2$fit
   prd.data2$upperr0 <- predictions2$fit + 1.96*predictions2$se.fit
   prd.data2$lowerr0 <- predictions2$fit - 1.96*predictions2$se.fit
+
   
   #Plot data + predictions
-  ggplot(dd.evo, aes(y=logratio, x=Sex, color = Sex)) + geom_point(size=2) + facet_grid(Gene.Flow~Gradient) + 
+  ggplot(dd.evo, aes(y=logratio, x=Sex, color = Sex)) + geom_point(size=2) + facet_grid(Gene.Flow~Gradient) +
     geom_boxplot(inherit.aes = F, data = prd.data2, mapping = aes(fill = Sex, colour = NA, middle = meanr0, ymax = upperr0, ymin = lowerr0, upper = upperr0, lower = lowerr0, x = Sex), stat = "identity", alpha = 0.3) + 
     geom_boxplot(inherit.aes = F, data = prd.data2, mapping = aes(fill = NA, middle = meanr0, ymax = meanr0, ymin = meanr0, upper = meanr0, lower = meanr0, x = Sex), stat = "identity", alpha = 0.3) + 
     ylab(expression("Intrinsic rate of increase, r"[0]*" (log-ratio response) ")) + xlab("Reproductive strategy") + 
     theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                            axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
+                            axis.title=element_text(size=16), strip.text = element_text(size=16), axis.title.x = element_blank(),
+                            axis.text.x=element_text(size=16, color = "black"))+
     theme(strip.background =element_rect(fill="grey"))+
     theme(strip.text = element_text(colour = 'black')) +
-    scale_color_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproductive strategy", labels=c("No sex (Asex)", "Sex (Sex)")) +
-    scale_fill_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproductive strategy", labels=c("No sex (Asex)", "Sex (Sex)"))
+    scale_color_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproduction", labels=c("Asexual", "Sexual")) +
+    scale_fill_manual(values=c("#8c510a", "#01665e"), breaks=c("No sex (Asex)", "Sex (Sex)"), name="Reproduction", labels=c("Asexual", "Sexual"))
   ggsave(filename = "4_results/Figures/03_growthRateEvolution.png", device = "png", width = 8.5, height = 5.88, dpi = 300)
 }
 
+#Plot data + predictions
+ggplot(dd.evo, aes(y=logratio, x=Sex, color = Sex)) + geom_point(size=2) + facet_grid(Gene.Flow~Gradient) +
+  geom_boxplot(inherit.aes = F, data = prd.data2, mapping = aes(fill = Sex, colour = NA, middle = meanr0, ymax = upperr0, ymin = lowerr0, upper = upperr0, lower = lowerr0, x = Sex), stat = "identity", alpha = 0.3) + 
+  geom_boxplot(inherit.aes = F, data = prd.data2, mapping = aes(fill = NA, middle = meanr0, ymax = meanr0, ymin = meanr0, upper = meanr0, lower = meanr0, x = Sex), stat = "identity", alpha = 0.3) + 
+  ylab(expression("Intrinsic rate of increase, r"[0]*" (log-ratio response) ")) + xlab("Reproductive strategy") + 
+  theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
+                          axis.title=element_text(size=16), strip.text = element_text(size=16), axis.title.x = element_blank(),
+                          axis.text.x=element_text(size=16, color = "black"), legend.position = "bottom")+
+  theme(strip.background =element_rect(fill="grey"))+
+  theme(strip.text = element_text(colour = 'black')) +
+  scale_color_manual(values=c("#8c510a", "#01665e"), breaks=c("Asexual", "Sexual"), name="Reproduction", labels=c("Asexual", "Sexual")) +
+  scale_fill_manual(values=c("#8c510a", "#01665e"), breaks=c("Asexual", "Sexual"), name="Reproduction", labels=c("Asexual", "Sexual"))
+ggsave(filename = "4_results/Figures/03_growthRateEvolution_legend.png", device = "png", width = 8.5, height = 5.88, dpi = 300)

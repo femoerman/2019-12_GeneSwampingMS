@@ -16,7 +16,7 @@
   # setwd("E:/PhD/08_Big_Experiment_1")
   setwd("/media/felix/DataDrive2/Documenten/PhD/08_Gene_Swamping/")
   dd <- read_tsv("2_data/0_b_PositionDuringExperiment.txt")
-  dd2 <- read_tsv("2_data/6_Survival_Data.csv")
+  surv <- read_tsv("2_data/6_Survival_Data.csv")
 }
 
 #4) Data handling
@@ -52,7 +52,7 @@
 
 #5) Plot raw expanxion rate data
 #Test effect expansion rate evolved populations
-dd <- filter(positions, Strain=="mix", Day==max(positions$Day)) %>% filter(Culture%in% filter(dd2, Survival==1)$Number)
+dd <- filter(positions, Strain=="mix", Day==max(positions$Day)) %>% filter(Culture%in% filter(surv, Survival==1)$Number)
 dd$Sex <- factor(ifelse(dd$Sex=="y", "Sex (Sex)", "No sex (Asex)"), levels = c("No sex (Asex)", "Sex (Sex)"))
 dd$Gradient <- factor(ifelse(dd$Gradient=="y", "Gradient", "No gradient"), levels = c("No gradient", "Gradient"))
 dd$GeneFlow <- factor(ifelse(dd$GeneFlow=="y", "Gene flow (GF)", "No gene flow (NoGF)"), levels = c("No gene flow (NoGF)", "Gene flow (GF)"))

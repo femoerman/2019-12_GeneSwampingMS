@@ -9,6 +9,7 @@ rm(list=ls())
   library(tidyverse)
   library(rethinking)
   library(MuMIn)
+  library(car)
 }
 
 #3) Set working directory and read in data
@@ -27,70 +28,19 @@ rm(list=ls())
  
   #Filter data for evolution part and rename variables properly
   dd.evo <- filter(dd, Strain=="mix")
-  dd.evo$Sex <- factor(ifelse(dd.evo$sex=="y", "Sex", "No sex"), levels = c("No sex", "Sex"))
-  dd.evo$Gradient <- factor(ifelse(dd.evo$Gradient=="y", "Gradient", "No gradient"), levels = c("No gradient", "Gradient"))
-  dd.evo$GeneFlow <- factor(ifelse(dd.evo$'Gene flow'=="y", "Gene flow", "No gene flow"), levels = c("No gene flow", "Gene flow"))
+  dd.evo$sex <- factor(ifelse(dd.evo$sex=="y", "Sexual", "Asexual"), levels = c("Asexual", "Sexual"))
+  dd.evo$Gradient <- factor(ifelse(dd.evo$Gradient=="y", "Gradient", "Uniform"), levels = c("Uniform", "Gradient"))
+  dd.evo$'Gene flow' <- factor(ifelse(dd.evo$'Gene flow'=="y", "Present", "Absent"), levels = c("Absent", "Present"))
   
   #Make survival class
   dd.evo$Surv <- ifelse(dd.evo$Survival == 1, "yes", "no")
   
   #Summarize to probabilities
-  dd.evo$class <- paste(dd.evo$Gradient, dd.evo$GeneFlow, dd.evo$Sex)
+  dd.evo$class <- paste(dd.evo$Gradient, dd.evo$'Gene flow', dd.evo$sex)
   dd.evo.sum <- group_by(dd.evo, class)%>% summarize(probSurv = sum(Survival)/5)
-  dd.evo.sum$Gradient <-ifelse("No gradient" %in% dd.evo.sum$class, "No gradient", "Gradient")
-  dd.evo.sum$Sex <-ifelse("No sex" %in% dd.evo.sum$class, "No sex", "Sex")
-  dd.evo.sum$GeneFlow <-ifelse("No gene flow" %in% dd.evo.sum$class, "No gene flow", "Gene flow")
-  
-}
-
-#5) Do model selection for evolution data
-{
-  dd.temp <- select(dd.evo, Survival, Gradient, 'Gene flow', sex)
-  #dd.temp$Survival <- as.numeric(dd.temp$Survival)
-  dd.cont.grad <- table(dd.temp[c(1,2)])
-  t1 <- fisher.test(dd.cont.grad)
-  t1
-  
-  dd.sex <- table(dd.temp[c(1,4)])
-  t2 <- fisher.test(dd.sex)
-  t2
-  
-  dd.GF <- table(dd.temp[c(1,3)])
-  t3 <- fisher.test(dd.GF)
-  t3
-  
-  
-  full.model <- glm(data = dd.evo,Survival~Gradient*GeneFlow*Sex, na.action = "na.fail", family = binomial(link="cloglog"))
-  summary(full.model)
-  t <- dredge(full.model)
-  best.model <- glm(data = dd.evo, as.numeric(Survival)~GeneFlow + Gradient, family = binomial(link="cloglog"))
-  anova(best.model)
-  summary(best.model)
-}
-
-#7) Calculate and save posterior predictions, as well as the selected models
-{
-  #7.1) Create prediction data with all combinations
-  dd.predict <- expand.grid(GeneFlow = unique(dd.evo$GeneFlow), Sex = unique(dd.evo$Sex), Gradient = unique(dd.evo$Gradient))
-  
-  #7.2) Simulate the predictions
-  predictions <- predict(best.model, newdata = dd.predict, se.fit = T)
-  
-  #7.3) Past together with predictions
-  dd.predict$meansurv <- inv_logit(predictions$fit)
-  dd.predict$uppersurv <- inv_logit(predictions$fit + 1.96*predictions$se.fit)
-  dd.predict$lowersurv <- inv_logit(predictions$fit - 1.96*predictions$se.fit)
-  
-  #7.4) Plot predictions and data
-  ggplot(dd.evo, aes(x=Gradient, y=as.numeric(Survival), colour=Gradient)) + ylab("Survival probability")  + facet_grid(Sex~GeneFlow) +
-    geom_boxplot(inherit.aes = F, data = dd.predict, mapping = aes(x = Gradient, lower = meansurv, upper = meansurv, middle = meansurv, ymin = meansurv, ymax = meansurv, fill = Gradient), stat = "identity", alpha = 0.3) +
-    geom_point(position = position_dodge2(width = 0.5), size=3) + 
-    theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                            axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
-    theme(strip.background =element_rect(fill="grey"))+
-    theme(strip.text = element_text(colour = 'black')) +
-    scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient", "Gradient")) +
-    scale_fill_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient", "Gradient"))
+  dd.evo.sum$Gradient <-ifelse("Uniform" %in% dd.evo.sum$class, "Uniform", "Gradient")
+  dd.evo.sum$Sex <-ifelse("Asexual" %in% dd.evo.sum$class, "Asexual", "Sexual")
+  dd.evo.sum$GeneFlow <-ifelse("Absent" %in% dd.evo.sum$class, "Absent", "Present")
   
 }
 
@@ -99,7 +49,7 @@ rm(list=ls())
 {
   library(rethinking)
   dd <- dd.evo
-  ddstats <- list(surv = dd$Survival, strain = dd$Strain, grad = ifelse(dd$Gradient=="No gradient", 1, 0), geneflow = ifelse(dd$`Gene flow`=="y", 1, 0), sex = ifelse(dd$sex=="y", 1, 0))
+  ddstats <- list(surv = dd$Survival, strain = dd$Strain, grad = ifelse(dd$Gradient=="Uniform", 0, 1), geneflow = ifelse(dd$`Gene flow`=="Present", 1, 0), sex = ifelse(dd$sex=="Sexual", 1, 0))
 
   
   #6.1) Survival ~ 0
@@ -421,21 +371,24 @@ rm(list=ls())
   dd.predict2$meansurv <- apply(pred$link, 2, mean)
   dd.predict2$uppersurv <- apply(pred$link, 2, PI, prob = 0.95)[2, ]
   dd.predict2$lowersurv <- apply(pred$link, 2, PI, prob = 0.95)[1, ]
-  dd.predict2$Gradient <- factor(ifelse(dd.predict2$grad==0, "Gradient", "No gradient"), levels = c("No gradient", "Gradient"))
-  dd.predict2$Sex <- factor(ifelse(dd.predict2$sex==1, "Sex", "No sex"), levels = c("No sex", "Sex"))
-  dd.predict2$GeneFlow <- factor(ifelse(dd.predict2$geneflow==1, "Gene flow", "No gene flow"), levels = c("No gene flow", "Gene flow"))
+  dd.predict2$Gradient <- factor(ifelse(dd.predict2$grad==0, "Uniform", "Gradient"), levels = c("Uniform", "Gradient"))
+  dd.predict2$Sex <- factor(ifelse(dd.predict2$sex==1, "Sexual", "Asexual"), levels = c("Asexual", "Sexual"))
+  dd.predict2$GeneFlow <- factor(ifelse(dd.predict2$geneflow==1, "Present", "Absent"), levels = c("Absent", "Present"))
   
   #Plot predictions and data
-  ggplot(dd.evo, aes(x=Gradient, y=as.numeric(Survival), colour=Gradient)) + ylab("Survival probability")  + facet_grid(Sex~GeneFlow) +
+  dd.evo <- mutate(dd.evo, Sex=sex)
+  dd.evo$GeneFlow <- dd.evo$`Gene flow`
+  ggplot(dd.evo, aes(x=Gradient, y=as.numeric(Survival), colour=Gradient)) + ylab("Survival probability")  + facet_grid(GeneFlow~Sex) +
     geom_boxplot(inherit.aes = F, data = dd.predict2, mapping = aes(x = Gradient, lower = lowersurv, upper = uppersurv, middle = meansurv, ymin = lowersurv, ymax = uppersurv, fill = Gradient, colour=NA), stat = "identity", alpha = 0.3) +
     geom_boxplot(inherit.aes = F, data = dd.predict2, mapping = aes(x = Gradient, lower = meansurv, upper = meansurv, middle = meansurv, ymin = meansurv, ymax = meansurv, fill = NA), stat = "identity", alpha = 0.3) +
     geom_point(position = position_dodge2(width = 0.5), size=3) + 
     theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                            axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
+                            axis.title=element_text(size=16), strip.text = element_text(size=16), axis.title.x = element_blank(),
+                            axis.text.x=element_text(size=16, color = "black"), legend.position="none")+
     theme(strip.background =element_rect(fill="grey"))+
     theme(strip.text = element_text(colour = 'black')) +
-    scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient", "Gradient")) +
-    scale_fill_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient", "Gradient"))
+    scale_color_manual(values=c("#e41a1c", "#2d33f9"), breaks=c("Uniform", "Gradient"), name="Abiotic conditions", labels=c("Uniform", "Gradient")) +
+    scale_fill_manual(values=c("#e41a1c", "#2d33f9"), breaks=c("Uniform", "Gradient"), name="Abiotic conditions", labels=c("Uniform", "Gradient"))
 
   ggsave(filename = "4_results/Figures/05_ExtinctionProbability.png", device = "png", width = 8.5, height = 5.88, dpi = 300)
 

@@ -6,6 +6,7 @@ rm(list=ls())
   library(tidyverse)
   library(MuMIn)
   library(nlme)
+  library(car)
 }
 
 #3) Set working directory and load in data
@@ -27,9 +28,9 @@ sumdata <- sumoutputall
   plotdata$K.mean <- ifelse(is.na(plotdata$logK.mean), NA, exp(plotdata$logK.mean))
   plotdata$alpha.mean <- ifelse(is.na(plotdata$logalpha.mean), NA, exp(plotdata$logalpha.mean))
   plotdata$d.mean <- ifelse(is.na(plotdata$logd.mean), NA, exp(plotdata$logd.mean))
-  plotdata$Sex <- factor(ifelse(plotdata$Sex=="y", "Sex (Sex)", "No sex (Asex)"), levels = c("No sex (Asex)", "Sex (Sex)"))
-  plotdata$Gradient <- factor(ifelse(plotdata$Gradient=="y", "Gradient (Grad)", "No gradient (Const)"), levels = c("No gradient (Const)", "Gradient (Grad)"))
-  plotdata$Gene.Flow <- factor(ifelse(plotdata$Gene.Flow=="y", "Gene flow (GF)", "No gene flow (NoGF)"), levels = c("No gene flow (NoGF)", "Gene flow (GF)"))
+  plotdata$Sex <- factor(ifelse(plotdata$Sex=="y", "Sexual", "Asexual"), levels = c("Asexual", "Sexual"))
+  plotdata$Gradient <- factor(ifelse(plotdata$Gradient=="y", "Gradient", "Uniform"), levels = c("Uniform", "Gradient"))
+  plotdata$Gene.Flow <- factor(ifelse(plotdata$Gene.Flow=="y", "Present", "Absent"), levels = c("Absent", "Present"))
   
   sumdata$testpH <- paste(sumdata$pH, "j")
 }
@@ -63,97 +64,18 @@ sumdata <- sumoutputall
     dd.all <- filter(dd.all, !is.na(logratio))
     
   }
-  
-  #Create concentration H+ var
-  dd.all$concH <- 10**(-dd.all$testpH)
-  
-  #Plot the logratios
-  ggplot(dd.all, aes(x = concH, y = logratio, colour = Sex, group=ID)) + geom_point() + geom_line() + facet_grid(Gene.Flow~Gradient)
-  ggplot(dd.all, aes(x = testpH, y = logratio, colour = Sex, group=ID)) + geom_point() + geom_line() + facet_grid(Gene.Flow~Gradient)
-  
-  #Plot the raw r0 values
-  ggplot(dd.all, aes(x = concH, y = r0.mean, colour = Sex, group=ID)) + geom_point() + geom_line() + facet_grid(Gene.Flow~Gradient)
-  ggplot(dd.all, aes(x = testpH, y = r0.mean, colour = Sex, group=ID)) + geom_point() + geom_line() + facet_grid(Gene.Flow~Gradient)
-  
-  dd.all$pHfact <- as.factor(dd.all$testpH)
-  
-  #Fit model, conc H+ as continues data
-  full.model <- lme(data = dd.all, r0.mean ~ Gradient*Sex*Gene.Flow*concH, random =  ~ 1|ID, method = "ML")
-  t.all <- dredge(full.model, rank = BIC)
-  best.model <- lme(data = dd.all, r0.mean ~ Gradient + concH, random =  ~ 1|ID, method = "REML")
-  anova(best.model)
-  summary(best.model)
-  
-  
-  #Create prediction data
-  prd.data2 <- expand.grid(Gradient = unique(dd.all$Gradient),concH =seq(from = min(dd.all$concH), to = max(dd.all$concH), length.out = 100),
-                           Sex = unique(dd.all$Sex), Gene.Flow = unique(dd.all$Gene.Flow))
-  predictions2 <- predict(best.model, newdata = prd.data2, se.fit = T, level = 0)
-  prd.data2$meansize <-predictions2$fit
-  prd.data2$uppersize <- predictions2$fit + 1.96*predictions2$se.fit
-  prd.data2$lowersize <- predictions2$fit - 1.96*predictions2$se.fit
-  #prd.data2$testpH <- as.numeric(as.character(prd.data2$pHfact))
-  
-  #Plot data and predictions
-  ggplot(dd.all, aes(x = concH, y = r0.mean, colour = Gradient)) + geom_point(size=2) + 
-    geom_ribbon(data = prd.data2, inherit.aes = F, mapping = aes(x = concH, ymax = uppersize, ymin = lowersize, fill = Gradient), alpha = 0.3) + 
-    geom_line(data = prd.data2, inherit.aes = F, mapping = aes(x = concH, y = meansize, colour = Gradient)) + 
-    ylab(expression("Log-ratio response (r"[0]*")")) + xlab("conc H+") + 
-    theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                            axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
-    theme(strip.background =element_rect(fill="grey"))+
-    theme(strip.text = element_text(colour = 'black')) +
-    scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)")) +
-    scale_fill_manual(values=c("#2d33f9","#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)"))+
-  facet_grid(Sex~Gene.Flow)
-  
-  
-  
-  
-  
-  #10) Make predictions and plot + raw data
-  {
-    dd.all$pHfact <- as.factor(dd.all$testpH)
-    #Fit model, tetspH
-    full.model <- lme(data = dd.all, r0.mean ~ Gradient*Sex*Gene.Flow*pHfact, random =  ~ 1|ID, method = "ML")
-    t.all <- dredge(full.model, rank = BIC)
-    best.model <- lme(data = dd.all, r0.mean ~ Gradient + pHfact, random =  ~ 1|ID, method = "REML")
-    anova(best.model)
-    summary(best.model)
-    
-    #Create prediction data
-    prd.data2 <- expand.grid(Gradient = unique(dd.all$Gradient),pHfact =unique(dd.all$pHfact),
-                             Sex = unique(dd.all$Sex), Gene.Flow = unique(dd.all$Gene.Flow))
-    predictions2 <- predict(best.model, newdata = prd.data2, se.fit = T, level = 0)
-    prd.data2$meansize <-predictions2$fit
-    prd.data2$uppersize <- predictions2$fit + 1.96*predictions2$se.fit
-    prd.data2$lowersize <- predictions2$fit - 1.96*predictions2$se.fit
-    prd.data2$pHfact <- as.numeric(as.character(prd.data2$pHfact))
-    
-    #Plot data and predictions
-    ggplot(dd.all, aes(x = testpH, y = r0.mean, colour = Gradient)) + geom_point(size=2) + 
-      geom_ribbon(data = prd.data2, inherit.aes = F, mapping = aes(x = pHfact, ymax = uppersize, ymin = lowersize, fill = Gradient), alpha = 0.3) + 
-      geom_line(data = prd.data2, inherit.aes = F, mapping = aes(x = pHfact, y = meansize, colour = Gradient)) + 
-      geom_point(inherit.aes = F, data = filter(sumdata, strain == "mix" & pH >=4), aes(x = pH, y = r0mean), colour = "green") +
-      ylab(expression("Intrinsic rate of increase, r"[0]*" (1/h; log-ratio response) ")) + xlab("Assay medium pH") + 
-      theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                              axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
-      theme(strip.background =element_rect(fill="grey"))+
-      theme(strip.text = element_text(colour = 'black')) +
-      scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)")) +
-      scale_fill_manual(values=c("#2d33f9","#e41a1c"), breaks=c("No gradient", "Gradient"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)"))+
-    facet_grid(Sex~Gene.Flow)
-    #ggsave(filename = "4_results/Figures/06_growthRateAllpH", device = "png", width = 7.53, height = 5.88, dpi = 300)
-    
-  }
 }
+
+#Create factorial variable for pH of the assay medium
 dd.all$pHfact <- as.factor(dd.all$testpH)
+
 #Fit model, tetspH
 full.model <- lme(data = dd.all, logratio ~ Gradient*Sex*Gene.Flow*pHfact, random =  ~ 1|ID, method = "ML")
 t.all <- dredge(full.model, rank = BIC)
 best.model <- lme(data = dd.all, logratio ~ Gradient + pHfact, random =  ~ 1|ID, method = "REML")
 anova(best.model)
 summary(best.model)
+Anova(best.model, contrasts=list(topic=contr.sum, sys=contr.sum), type=3)
 
 #Create prediction data
 prd.data2 <- expand.grid(Gradient = unique(dd.all$Gradient),pHfact =unique(dd.all$pHfact),
@@ -164,15 +86,16 @@ prd.data2$uppersize <- predictions2$fit + 1.96*predictions2$se.fit
 prd.data2$lowersize <- predictions2$fit - 1.96*predictions2$se.fit
 prd.data2$pHfact <- as.numeric(as.character(prd.data2$pHfact))
 
+#Plot model predictions with data
 ggplot(dd.all, aes(x = testpH, y = logratio, colour = Gradient)) + geom_point(size=2) + 
   geom_ribbon(data = prd.data2, inherit.aes = F, mapping = aes(x = pHfact, ymax = uppersize, ymin = lowersize, fill = Gradient), alpha = 0.3) + 
   geom_line(data = prd.data2, inherit.aes = F, mapping = aes(x = pHfact, y = meansize, colour = Gradient))+
   ylab(expression("Intrinsic rate of increase, r"[0]*" (log-ratio response) ")) + xlab("Assay medium pH") + 
   theme_light() +   theme(axis.text=element_text(size=12), legend.text=element_text(size=16),legend.title=element_text(size=16), strip.text.x=element_text(20),
-                          axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5))+
+                          axis.title=element_text(size=16), strip.text = element_text(size=16), plot.title = element_text(size=16, hjust = 0.5), legend.position = "none")+
   theme(strip.background =element_rect(fill="grey"))+
   theme(strip.text = element_text(colour = 'black')) +
-  scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("No gradient (Const)", "Gradient (Grad)"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)")) +
-  scale_fill_manual(values=c("#2d33f9","#e41a1c"), breaks=c("No gradient (Const)", "Gradient (Grad)"), name="Evolution treatment", labels=c("No gradient (Const)", "Gradient (Grad)"))+
-facet_grid(Sex~Gene.Flow)
+  scale_color_manual(values=c("#2d33f9", "#e41a1c"), breaks=c("Uniform", "Gradient"), name="Abiotic conditions", labels=c("Uniform", "Gradient")) +
+  scale_fill_manual(values=c("#2d33f9","#e41a1c"), breaks=c("Uniform", "Gradient"), name="Abiotic conditions", labels=c("Uniform", "Gradient"))+
+  facet_grid(Gene.Flow~Sex)
 ggsave(filename = "4_results/Figures/06_growthRateAllpH", device = "png", width = 8.5, height = 5.88, dpi = 300)
